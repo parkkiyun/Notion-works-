@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webhook 전송(Works & Category)</title>
+<style>
+  :root { --gap: 14px; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Apple SD Gothic Neo, "Malgun Gothic", sans-serif; margin: 0; background: #fafafa; color: #111; }
+  .wrap { max-width: 720px; margin: 32px auto; padding: 0 16px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p.desc { margin: 0 0 18px; color: #555; }
+  .card { background: #fff; border: 1px solid #e9e9e9; border-radius: 14px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+  label { display: block; font-weight: 600; margin-top: var(--gap); margin-bottom: 6px; }
+  input[type="text"], input[type="url"], textarea, select {
+    width: 100%; padding: 12px 12px; border: 1px solid #ddd; border-radius: 12px; outline: none; background: #fff;
+  }
+  textarea { min-height: 160px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr; gap: var(--gap); }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+  button {
+    padding: 12px 14px; border: 1px solid #2c2c2c; background: #111; color: #fff;
+    border-radius: 12px; cursor: pointer; font-weight: 700;
+  }
+  button.secondary { background: #fff; color: #111; border-color: #ddd; }
+  .actions { display: flex; gap: var(--gap); margin-top: 18px; }
+  .msg { margin-top: 12px; font-weight: 600; }
+  .small { font-size: 12px; color: #777; }
+  .inline { display: inline-block; vertical-align: middle; }
+  .muted { color: #666; }
+  .ok { color: #087443; }
+  .err { color: #A11212; }
+  .tip { margin-top: 10px; font-size: 12px; color: #666; }
+  .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #f0f0f0; margin-right: 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Webhook 전송 (Works & Category)</h1>
+  <p class="desc">아이폰 단축어와 동일하게 <code>{"Works":"…","Category":"…"}</code> JSON을 <span class="pill">POST / application/json</span> 으로 전송합니다.<br>
+  웹훅 URL은 로컬에 저장되어 다음에 자동으로 채워집니다.</p>
+
+  <div class="card">
+    <div class="row">
+      <label for="url">웹훅 URL</label>
+      <input id="url" type="url" placeholder="https://hook.make.com/XXXXXX" autocomplete="off">
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <label for="works">Works (업무/내용)</label>
+      <textarea id="works" placeholder="예) 2학기 방과후학교 개설 여부 확인 및 8/18까지 강좌 개설 요청 등"></textarea>
+    </div>
+
+    <div class="row-2">
+      <div>
+        <label for="category">Category (선택)</label>
+        <select id="category">
+          <option value="">— 선택 —</option>
+          <option>방과후학교</option>
+          <option>운영위원회</option>
+          <option>회의</option>
+          <option>일정</option>
+          <option>행정</option>
+          <option>기타</option>
+        </select>
+      </div>
+      <div>
+        <label for="categoryCustom">Category 직접 입력(선택)</label>
+        <input id="categoryCustom" type="text" placeholder="직접 입력시 이 값이 우선됩니다">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="sendBtn">웹훅 전송 (Ctrl/⌘ + Enter)</button>
+      <button class="secondary" id="saveBtn">웹훅 URL 저장</button>
+      <button class="secondary" id="clearBtn">입력 지우기</button>
+    </div>
+    <div id="msg" class="msg muted">대기 중…</div>
+    <div class="tip">Tip: <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd> 로 바로 전송</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = (q) => document.querySelector(q);
+  const urlInput = $('#url');
+  const worksInput = $('#works');
+  const catSelect = $('#category');
+  const catCustom = $('#categoryCustom');
+  const msg = $('#msg');
+  const sendBtn = $('#sendBtn');
+  const saveBtn = $('#saveBtn');
+  const clearBtn = $('#clearBtn');
+  const LS_KEY = 'make.webhook.url';
+
+  // init
+  const saved = localStorage.getItem(LS_KEY);
+  if (saved) urlInput.value = saved;
+
+  function currentCategory(){
+    const custom = catCustom.value.trim();
+    if (custom) return custom;
+    return catSelect.value.trim();
+  }
+
+  async function send(){
+    const url = urlInput.value.trim();
+    const works = worksInput.value.trim();
+    const category = currentCategory();
+    if (!url) { msg.className = 'msg err'; msg.textContent = '웹훅 URL을 입력하세요.'; return; }
+    if (!works) { msg.className = 'msg err'; msg.textContent = 'Works 내용을 입력하세요.'; return; }
+    const payload = { Works: works, Category: category || "" };
+
+    msg.className = 'msg muted';
+    msg.textContent = '전송 중…';
+
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (r.ok) {
+        msg.className = 'msg ok';
+        msg.textContent = '✅ 전송 성공';
+        // works만 초기화(원하면 아래 reset으로 전체 초기화 가능)
+        // worksInput.value = '';
+      } else {
+        msg.className = 'msg err';
+        msg.textContent = '❌ 전송 실패: ' + r.status + ' ' + r.statusText;
+      }
+    } catch (e) {
+      msg.className = 'msg err';
+      msg.textContent = '❌ 오류: ' + e.message;
+    }
+  }
+
+  function saveUrl(){
+    const url = urlInput.value.trim();
+    if (!url) { msg.className = 'msg err'; msg.textContent = '저장 실패: URL이 비었습니다.'; return; }
+    localStorage.setItem(LS_KEY, url);
+    msg.className = 'msg ok';
+    msg.textContent = '✅ 웹훅 URL 저장 완료';
+  }
+
+  function clearAll(){
+    worksInput.value = '';
+    catSelect.value = '';
+    catCustom.value = '';
+    msg.className = 'msg muted';
+    msg.textContent = '초기화 완료';
+  }
+
+  sendBtn.addEventListener('click', send);
+  saveBtn.addEventListener('click', saveUrl);
+  clearBtn.addEventListener('click', clearAll);
+
+  // Ctrl/Cmd + Enter
+  document.addEventListener('keydown', (e)=>{
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      send();
+    }
+  });
+})();
+</script>
+</body>
+</html>
